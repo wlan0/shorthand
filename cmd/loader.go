@@ -7,15 +7,17 @@ import (
 	"github.com/golang/glog"
 	"github.com/koki/shorthand/inspect"
 	"golang.org/x/tools/go/loader"
-	v1 "k8s.io/api/core/v1"
+
+	// We're importing "v1" so it and its dependencies are added to vendor/.
+	// This package doesn't need "v1" to build, but it does need access
+	//   to the source files at runtime.
+	// TODO(ublubu): Make sure "go/loader" is configured to find the vendor
+	//   folder even if we run "shorthand" outside its source directory.
+	_ "k8s.io/api/core/v1"
 )
 
 // load a package and traverse all its types.
 func loadAndPrint(typeName string) {
-	// Just so the compiler doesn't complain about not using "v1".
-	var dummy v1.Pod
-	_ = dummy.Spec
-
 	var conf loader.Config
 
 	// We're just loading "v1" (and then all its dependencies).
