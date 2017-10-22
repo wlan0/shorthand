@@ -9,6 +9,6 @@ import (
 )
 
 func genThings() {
-	//gen.PrintFileAST(samples.PodSrc)
+	//gen.DeserializeAndPrintFileAST(samples.PodSrc)
 	_, _ = pretty.Println(gen.SerializeFileAST(samples.PodAST).String())
 }

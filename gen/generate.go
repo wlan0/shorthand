@@ -11,8 +11,8 @@ import (
 	"github.com/kr/pretty"
 )
 
-// PrintFileAST parse the contents of a Go source file and print the AST.
-func PrintFileAST(file string) {
+// DeserializeAndPrintFileAST parse the contents of a Go source file and print the AST.
+func DeserializeAndPrintFileAST(file string) {
 	// Create the AST by parsing src.
 	fset := token.NewFileSet() // positions are relative to fset
 	f, err := parser.ParseFile(fset, "", file, 0)
