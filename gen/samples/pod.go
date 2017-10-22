@@ -15,6 +15,7 @@ v1 "k8s.io/api/core/v1"
 func Pod(pod *v1.Pod) *Pod {
 var pod1 Pod
 pod1.Doot = pod.Spec.Doot
+pod1.Beep = Beep(pod)
 return &pod1
 }
 `
@@ -35,6 +36,9 @@ var PodAST = &ast.File{
 				gen.AssignmentOf(
 					gen.SelectorOrIdentForV("pod1", "Doot"),
 					gen.SelectorOrIdentForV("pod", "Spec", "Doot")),
+				gen.AssignmentOf(
+					gen.SelectorOrIdentForV("pod1", "Beep"),
+					gen.SimpleCallOf("Beep", "pod")),
 				gen.ReturnAddressOf("pod1"),
 			),
 		},
