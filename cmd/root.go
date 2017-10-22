@@ -23,6 +23,14 @@ var printCmd = &cobra.Command{
 	},
 }
 
+var playCmd = &cobra.Command{
+	Use:   "play",
+	Short: "do some random stuff (development purposes only)",
+	Run: func(cmd *cobra.Command, args []string) {
+		genThings()
+	},
+}
+
 func init() {
-	RootCmd.AddCommand(printCmd)
+	RootCmd.AddCommand(printCmd, playCmd)
 }
