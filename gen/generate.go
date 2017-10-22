@@ -12,17 +12,27 @@ import (
 )
 
 // DeserializeAndPrintFileAST parse the contents of a Go source file and print the AST.
-func DeserializeAndPrintFileAST(file string) {
+func DeserializeAndPrintFileAST(fileContents string) {
+	fset, f := DeserializeFileAST(fileContents)
+	PrintAST(fset, f)
+}
+
+// DeserializeFileAST parse the contents of a Go source file and return FileSet and AST
+func DeserializeFileAST(fileContents string) (*token.FileSet, *ast.File) {
 	// Create the AST by parsing src.
 	fset := token.NewFileSet() // positions are relative to fset
-	f, err := parser.ParseFile(fset, "", file, 0)
+	f, err := parser.ParseFile(fset, "", fileContents, 0)
 	if err != nil {
 		glog.Fatal(err)
 	}
 
-	// Print the AST.
-	_ = ast.Print(fset, f)
-	_, _ = pretty.Println(f)
+	return fset, f
+}
+
+// PrintAST print the AST
+func PrintAST(fset *token.FileSet, f *ast.File) {
+	ast.Print(fset, f)
+	pretty.Println(f)
 }
 
 // SerializeFileAST use go/format to write a Go source file to a buffer.
