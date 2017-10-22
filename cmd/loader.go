@@ -38,7 +38,7 @@ func loadAndPrint(typeName string) {
 		context := inspect.ContextForPackageAndType(
 			program, v1pkg, typeName)
 		if context == nil {
-			glog.Error("couldn't find v1 type ", typeName)
+			glog.Errorf("couldn't find v1 type %s", typeName)
 			return
 		}
 
