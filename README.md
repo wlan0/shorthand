@@ -1,4 +1,4 @@
-# Shorthand
+# Shorthand [![Build Status](https://travis-ci.org/koki/shorthand.svg?branch=master)](https://travis-ci.org/koki/shorthand)
 
 Encode your domain-specific knowledge and automatically generate a user-friendly API.
 
