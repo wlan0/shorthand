@@ -8,11 +8,11 @@ import (
 	"go/token"
 
 	"github.com/golang/glog"
-	"github.com/koki/shorthand/gen/samples"
 	"github.com/kr/pretty"
 )
 
-func printFileAST(file string) {
+// PrintFileAST parse the contents of a Go source file and print the AST.
+func PrintFileAST(file string) {
 	// Create the AST by parsing src.
 	fset := token.NewFileSet() // positions are relative to fset
 	f, err := parser.ParseFile(fset, "", file, 0)
@@ -25,7 +25,8 @@ func printFileAST(file string) {
 	_, _ = pretty.Println(f)
 }
 
-func serializeFileAST(file *ast.File) *bytes.Buffer {
+// SerializeFileAST use go/format to write a Go source file to a buffer.
+func SerializeFileAST(file *ast.File) *bytes.Buffer {
 	// Create a FileSet for node. Since the node does not come
 	// from a real source file, fset will be empty.
 	fset := token.NewFileSet()
@@ -39,13 +40,9 @@ func serializeFileAST(file *ast.File) *bytes.Buffer {
 	return &buf
 }
 
-func printAllTokens() {
+// PrintAllTokens print all tokens.
+func PrintAllTokens() {
 	for i := 0; i <= int(token.VAR); i++ {
 		_, _ = pretty.Printf("%d: %s\n", i, token.Token(i).String())
 	}
-}
-
-func Generate() {
-	printFileAST(samples.PodSrc)
-	_, _ = pretty.Println(serializeFileAST(samples.PodAST).String())
 }
