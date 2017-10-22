@@ -1,0 +1,8 @@
+#!/bin/sh
+
+set -ax
+
+SCRIPTS_DIR=$(dirname $0)
+
+$SCRIPTS_DIR/build
+$SCRIPTS_DIR/test
