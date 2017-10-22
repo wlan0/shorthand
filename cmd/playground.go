@@ -1,7 +1,6 @@
 package cmd
 
-// This file contains methods for recursively inspecting a type definition
-//   and a Print() method to test their implementation.
+// This file is just for trying things out during development.
 
 import (
 	"github.com/koki/shorthand/gen"
