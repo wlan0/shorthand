@@ -30,7 +30,13 @@ func loadAndPrint(typeName string) {
 		return
 	}
 
-	v1pkg := program.InitialPackages()[0]
+	initialPackages := program.InitialPackages()
+	if len(initialPackages) == 0 {
+		glog.Errorf("go/loader succeeded, but no packages loaded. weird.")
+		return
+	}
+
+	v1pkg := initialPackages[0]
 	var contexts []*inspect.Context
 
 	if len(typeName) > 0 {
