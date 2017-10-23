@@ -34,9 +34,14 @@ type Slice struct {
 	Value TypeWrapper
 }
 
-// Pointer is *Value
-type Pointer struct {
-	Value TypeWrapper
+// TODO: Pointer is actually a subset of Sum (not implemented).
+// We can implement Sum types using interfaces.
+type Sum struct {
+	Choices []TypeWrapper
+}
+
+func PointerOf(t TypeWrapper) *Sum {
+	return &Sum{[]TypeWrapper{nil, t}}
 }
 
 type TypeDefinition interface {
@@ -83,7 +88,7 @@ func ParseTypeExpr(context *inspect.Context, typeExpr ast.Expr) TypeWrapper {
 	case *ast.ParenExpr:
 		return ParseTypeExpr(context, typeExpr.X)
 	case *ast.StarExpr:
-		return &Pointer{Value: ParseTypeExpr(context, typeExpr.X)}
+		return PointerOf(ParseTypeExpr(context, typeExpr.X))
 	case *ast.ArrayType:
 		if typeExpr.Len == nil {
 			return &Slice{Value: ParseTypeExpr(
@@ -199,6 +204,6 @@ func (t *Slice) getWrapper() TypeWrapper {
 	return t
 }
 
-func (t *Pointer) getWrapper() TypeWrapper {
+func (t *Sum) getWrapper() TypeWrapper {
 	return t
 }

@@ -1,9 +1,7 @@
 package mapping
 
 import (
-	//"go/ast"
-
-	"github.com/koki/shorthand/inspect"
+	"github.com/golang/glog"
 )
 
 /*
@@ -16,61 +14,28 @@ When mapping to a pointer, we map from a set of pointers.
 
 */
 
-type AccessType struct {
-	Whole TypeWrapper
-	Part  TypeWrapper
-}
-
-type Access struct {
-	AccessType
-	Accessor Accessor
-}
-
-type Accessor interface {
-	getAccessor() Accessor
-}
-
-type FieldAccess struct {
-	Name string
-}
-
-type MapAccess struct {
-}
-
-type SliceAccess struct {
-}
-
-type PointerAccess struct {
-}
-
-type MappingAccess struct {
-	Mapping Mapping
-}
-
-type AccessPath struct {
-	Segments []Access
-}
-
 type MappingDefinition interface {
 	getMappingDefinition() MappingDefinition
 }
 
+type MappedFromField struct {
+	Field string
+}
+
 type MappedStruct struct {
-	Fields map[FieldAccess]AccessPath
+	Fields map[string]*Mapping
 }
 
 type MappedMap struct {
+	Value *Mapping
 }
 
 type MappedSlice struct {
+	Value *Mapping
 }
 
-type MappedSimplePointer struct {
-	Field AccessPath
-}
-
-type MappedStructPointer struct {
-	Fields map[FieldAccess]AccessPath
+type MappedSum struct {
+	Choices []*Mapping
 }
 
 type Mapping struct {
@@ -79,16 +44,121 @@ type Mapping struct {
 	Definition MappingDefinition
 }
 
-func IdentityMappingFor(context *inspect.Context) *Mapping {
-	/*
-		rootType := RootType(context)
-		mapping := &Mapping{From: rootType, To: rootType}
-			switch root := context.TypeSpec.Type {
-				case *
-			}
-	*/
+func IdentityMappingforSum(t *Sum) *MappedSum {
+	return &MappedSum{make([]*Mapping, len(t.Choices))}
+}
 
+func IdentityMappingForTypeIdent(t *TypeIdent) MappingDefinition {
+	switch d := t.Definition.(type) {
+	case *StructDefinition:
+		return IdentityMappingForStructType(t, d)
+	case *WrapperDefinition:
+		// Never modify simple wrapper types.
+		return nil
+	}
+
+	glog.Fatal("Inconceivable!")
 	return nil
+}
+
+func IdentityMappingForStructType(t *TypeIdent, d *StructDefinition) *MappedStruct {
+	fields := make(map[string]*Mapping, len(d.Fields))
+	for _, field := range d.Fields {
+		fields[field.Name] = &Mapping{
+			From:       t,
+			To:         field.Type,
+			Definition: &MappedFromField{field.Name},
+		}
+	}
+
+	return &MappedStruct{fields}
+}
+
+func IdentityMapping(t TypeWrapper) *Mapping {
+	var d MappingDefinition
+	switch t := t.(type) {
+	case *TypeIdent:
+		d := IdentityMappingForTypeIdent(t)
+	case *Map:
+		d := &MappedMap{}
+	case *Slice:
+		d := &MappedSlice{}
+	case *Sum:
+		d := IdentityMappingforSum(t)
+	}
+
+	return &Mapping{From: t, To: t, Definition: d}
+}
+
+/*
+Shrinking recurses like this:
+1. Try changing Mapping at this level. This creates a set of child mappings.
+2. Try changing the child mappings.
+3. Build the return type from the children's return types.
+4. If no changes were made, continue. Otherwise, return to 1.
+
+TODO: Deal with branches properly
+*/
+
+// Context is used to make sure we create unique type names.
+// NOTE: Anonymous structs here?
+type Context struct {
+}
+
+// ShrinkWrapper is the top-level "generate a mapping" function.
+func (c *Context) ShrinkWrapper(t TypeWrapper) *Mapping {
+	return c.Shrink(IdentityMapping(t))
+}
+
+func (c *Context) Shrink(m *Mapping) *Mapping {
+	switch d := m.Definition.(type) {
+	case *MappedStruct:
+	case *MappedMap:
+	case *MappedSlice:
+	case *MappedSum:
+	}
+}
+
+// The best we can do is shrink the values.
+func (c *Context) ShrinkMap(d *MappedMap) *Mapping {
+	valueMapping := c.ShrinkWrapper(t.Value)
+	if valueMapping == nil {
+		// Identity mapping (no-op).
+		return nil
+	}
+
+	return &Mapping{
+		From:       t,
+		To:         &Map{Key: t.Key, Value: valueMapping.To},
+		Definition: &MappedMap{Value: valueMapping},
+	}
+}
+
+// The best we can do is shrink the values.
+func (c *Context) ShrinkSlice(t *Slice) *Mapping {
+	valueMapping := c.ShrinkWrapper(t.Value)
+	if valueMapping == nil {
+		// Identity mapping (no-op).
+		return nil
+	}
+
+	return &Mapping{
+		From:       t,
+		To:         &Slice{valueMapping.To},
+		Definition: &MappedSlice{valueMapping},
+	}
+}
+
+func (c *Context) ShrinkSum(t *Sum) *Mapping {
+	return nil
+}
+
+func (c *Context) ShrinkTypeIdent(t *TypeIdent) *Mapping {
+	return nil
+}
+
+func (d *MappedFromField) getMappingDefinition() MappingDefinition {
+	return d
 }
 
 func (d *MappedStruct) getMappingDefinition() MappingDefinition {
@@ -103,26 +173,6 @@ func (d *MappedSlice) getMappingDefinition() MappingDefinition {
 	return d
 }
 
-func (d *MappedSimplePointer) getMappingDefinition() MappingDefinition {
+func (d *MappedSum) getMappingDefinition() MappingDefinition {
 	return d
-}
-
-func (d *MappedStructPointer) getMappingDefinition() MappingDefinition {
-	return d
-}
-
-func (a *FieldAccess) getAccessor() Accessor {
-	return a
-}
-
-func (a *MapAccess) getAccessor() Accessor {
-	return a
-}
-
-func (a *SliceAccess) getAccessor() Accessor {
-	return a
-}
-
-func (a *PointerAccess) getAccessor() Accessor {
-	return a
 }
