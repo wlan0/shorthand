@@ -6,6 +6,8 @@ package cmd
 import (
 	"github.com/golang/glog"
 	"github.com/koki/shorthand/inspect"
+	"github.com/koki/shorthand/mapping"
+	"github.com/kr/pretty"
 	"golang.org/x/tools/go/loader"
 
 	// We're importing "v1" so it and its dependencies are added to vendor/.
@@ -56,6 +58,7 @@ func loadAndPrint(typeName string) {
 
 	// Test the traversal context by printing all fields "recursively".
 	for _, context := range contexts {
-		context.Print(0)
+		pretty.Println(mapping.DeepParseType(context))
+		//context.Print(0)
 	}
 }

@@ -30,6 +30,20 @@ type Context struct {
 	TypeSpec *ast.TypeSpec
 }
 
+const vendorSlash = "vendor/"
+
+// CleanedPackagePath path to the package without the ".../vendor/" prefix
+// Related funcs: pathMatchesPackage & importMatchesPackage
+// NOTE: This breaks if we have a dependency with "vendor/" in its short path.
+func CleanedPackagePath(pkgPath string) string {
+	vendorIndex := strings.LastIndex(pkgPath, vendorSlash)
+	if vendorIndex < 0 {
+		return pkgPath
+	}
+
+	return pkgPath[vendorIndex+len(vendorSlash):]
+}
+
 // importMatchesPackage checks if a package corresponds to an import.
 // types.Package uses the actual filesystem path (for non-built-in packages)
 //   e.g. github.com/koki/shorthand/vendor/k8s.io/apimachinery
@@ -204,6 +218,26 @@ func (context *Context) refocusedWithPkgAndTypeNames(pkgName string, typeName st
 			pkg := context.getImportedPackage(imprt)
 			if pkg.Pkg.Name() == pkgName {
 				return ContextForPackageAndType(context.Program, pkg, typeName)
+			}
+		}
+	}
+
+	return nil
+}
+
+// PackagePath gets the short path (without ".../vendor/" prefix).
+func (context *Context) PackagePath() string {
+	return CleanedPackagePath(context.Package.Pkg.Path())
+}
+
+func IdentTypeSpec(root *ast.Ident) *ast.TypeSpec {
+	obj := root.Obj
+	if obj != nil {
+		switch obj.Kind {
+		case ast.Typ:
+			switch decl := obj.Decl.(type) {
+			case *ast.TypeSpec:
+				return decl
 			}
 		}
 	}
