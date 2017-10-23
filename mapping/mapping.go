@@ -2,6 +2,7 @@ package mapping
 
 import (
 	"github.com/golang/glog"
+	"github.com/kr/pretty"
 )
 
 /*
@@ -14,165 +15,119 @@ When mapping to a pointer, we map from a set of pointers.
 
 */
 
-type MappingDefinition interface {
-	getMappingDefinition() MappingDefinition
+type Choice interface {
+	getChoice() Choice
 }
 
-type MappedFromField struct {
-	Field string
+type SumChoice struct {
+	Index int
+}
+type StructChoice struct {
+	Index string
+}
+
+type MappedField struct {
+	SourcePath []Choice
+	Name       string
+
+	// Struct is non-nil if the field contains a struct.
+	Struct *MappedStruct
+
+	// Atomic if not a Struct.
+	Atom *MappedAtom
 }
 
 type MappedStruct struct {
-	Fields map[string]*Mapping
+	SourcePath []Choice
+	Fields     []*MappedField
 }
 
-type MappedMap struct {
-	Value *Mapping
+// MappedAtom is opaque to the shrinking algorithm.
+// The atom may be shrinkable on the inside, but fields cannot be pulled from it.
+type MappedAtom struct {
 }
 
-type MappedSlice struct {
-	Value *Mapping
+func incrementFieldCount(fieldCounts map[string]int, fieldName string) {
+	count := getFieldCount(fieldCounts, fieldName)
+	fieldCounts[fieldName] = count + 1
 }
 
-type MappedSum struct {
-	Choices []*Mapping
-}
-
-type Mapping struct {
-	From       TypeWrapper
-	To         TypeWrapper
-	Definition MappingDefinition
-}
-
-func IdentityMappingforSum(t *Sum) *MappedSum {
-	return &MappedSum{make([]*Mapping, len(t.Choices))}
-}
-
-func IdentityMappingForTypeIdent(t *TypeIdent) MappingDefinition {
-	switch d := t.Definition.(type) {
-	case *StructDefinition:
-		return IdentityMappingForStructType(t, d)
-	case *WrapperDefinition:
-		// Never modify simple wrapper types.
-		return nil
+func getFieldCount(fieldCounts map[string]int, fieldName string) int {
+	if count, ok := fieldCounts[fieldName]; ok {
+		return count
 	}
 
-	glog.Fatal("Inconceivable!")
-	return nil
+	return 0
 }
 
-func IdentityMappingForStructType(t *TypeIdent, d *StructDefinition) *MappedStruct {
-	fields := make(map[string]*Mapping, len(d.Fields))
-	for _, field := range d.Fields {
-		fields[field.Name] = &Mapping{
-			From:       t,
-			To:         field.Type,
-			Definition: &MappedFromField{field.Name},
+func (s *MappedStruct) Shrink() {
+	for {
+		promotionCount := 0
+		fieldCounts := map[string]int{}
+		for _, field := range s.Fields {
+			incrementFieldCount(fieldCounts, field.Name)
+
+			if field.Atom != nil {
+				continue
+			}
+
+			for _, subfield := range field.Struct.Fields {
+				incrementFieldCount(fieldCounts, subfield.Name)
+			}
+		}
+
+		for fieldIx, field := range s.Fields {
+			if field.Atom != nil {
+				continue
+			}
+
+			for subfieldIx, subfield := range field.Struct.Fields {
+				if getFieldCount(fieldCounts, subfield.Name) == 1 {
+					promotionCount++
+					s.PromoteSubfield(fieldIx, subfieldIx)
+				}
+			}
+		}
+
+		if promotionCount == 0 {
+			break
 		}
 	}
 
-	return &MappedStruct{fields}
-}
+	// Finished shrinking the top level. Shrink the next level down.
+	for fieldIx, field := range s.Fields {
+		if field.Atom != nil {
+			continue
+		}
 
-func IdentityMapping(t TypeWrapper) *Mapping {
-	var d MappingDefinition
-	switch t := t.(type) {
-	case *TypeIdent:
-		d := IdentityMappingForTypeIdent(t)
-	case *Map:
-		d := &MappedMap{}
-	case *Slice:
-		d := &MappedSlice{}
-	case *Sum:
-		d := IdentityMappingforSum(t)
-	}
-
-	return &Mapping{From: t, To: t, Definition: d}
-}
-
-/*
-Shrinking recurses like this:
-1. Try changing Mapping at this level. This creates a set of child mappings.
-2. Try changing the child mappings.
-3. Build the return type from the children's return types.
-4. If no changes were made, continue. Otherwise, return to 1.
-
-TODO: Deal with branches properly
-*/
-
-// Context is used to make sure we create unique type names.
-// NOTE: Anonymous structs here?
-type Context struct {
-}
-
-// ShrinkWrapper is the top-level "generate a mapping" function.
-func (c *Context) ShrinkWrapper(t TypeWrapper) *Mapping {
-	return c.Shrink(IdentityMapping(t))
-}
-
-func (c *Context) Shrink(m *Mapping) *Mapping {
-	switch d := m.Definition.(type) {
-	case *MappedStruct:
-	case *MappedMap:
-	case *MappedSlice:
-	case *MappedSum:
+		field.Struct.Shrink()
 	}
 }
 
-// The best we can do is shrink the values.
-func (c *Context) ShrinkMap(d *MappedMap) *Mapping {
-	valueMapping := c.ShrinkWrapper(t.Value)
-	if valueMapping == nil {
-		// Identity mapping (no-op).
-		return nil
-	}
+func (s *MappedStruct) PromoteSubfield(fieldIx int, subfieldIx int) {
+	field := s.Fields[fieldIx]
+	subfield := field.Struct.Fields[subfieldIx]
+	field.Struct.DeleteFieldAt(subfieldIx)
+	s.InsertFieldAt(fieldIx, subfield)
 
-	return &Mapping{
-		From:       t,
-		To:         &Map{Key: t.Key, Value: valueMapping.To},
-		Definition: &MappedMap{Value: valueMapping},
+	if len(field.Struct.Fields) == 0 {
+		s.DeleteFieldAt(fieldIx)
 	}
 }
 
-// The best we can do is shrink the values.
-func (c *Context) ShrinkSlice(t *Slice) *Mapping {
-	valueMapping := c.ShrinkWrapper(t.Value)
-	if valueMapping == nil {
-		// Identity mapping (no-op).
-		return nil
-	}
-
-	return &Mapping{
-		From:       t,
-		To:         &Slice{valueMapping.To},
-		Definition: &MappedSlice{valueMapping},
-	}
+func (s *MappedStruct) InsertFieldAt(fieldIx int, field *MappedField) {
+	s.Fields = append(s.Fields[:fieldIx],
+		append([]*MappedField{field}, s.Fields[fieldIx:]...)...)
 }
 
-func (c *Context) ShrinkSum(t *Sum) *Mapping {
-	return nil
+func (s *MappedStruct) DeleteFieldAt(fieldIx int) {
+	s.Fields = append(s.Fields[:fieldIx], s.Fields[fieldIx+1:]...)
 }
 
-func (c *Context) ShrinkTypeIdent(t *TypeIdent) *Mapping {
-	return nil
+func (c *SumChoice) getChoice() Choice {
+	return c
 }
 
-func (d *MappedFromField) getMappingDefinition() MappingDefinition {
-	return d
-}
-
-func (d *MappedStruct) getMappingDefinition() MappingDefinition {
-	return d
-}
-
-func (d *MappedMap) getMappingDefinition() MappingDefinition {
-	return d
-}
-
-func (d *MappedSlice) getMappingDefinition() MappingDefinition {
-	return d
-}
-
-func (d *MappedSum) getMappingDefinition() MappingDefinition {
-	return d
+func (c *StructChoice) getChoice() Choice {
+	return c
 }
