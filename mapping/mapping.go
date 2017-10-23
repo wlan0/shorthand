@@ -1,9 +1,6 @@
 package mapping
 
-import (
-	"github.com/golang/glog"
-	"github.com/kr/pretty"
-)
+import ()
 
 /*
 
@@ -15,36 +12,60 @@ When mapping to a pointer, we map from a set of pointers.
 
 */
 
+// Choice focus on Part of a Whole type.
 type Choice interface {
 	getChoice() Choice
 }
 
+// SumChoice choose a branch of a Sum type.
 type SumChoice struct {
 	Index int
 }
+
+// StructChoice choose a branch (Field) of a Struct type.
 type StructChoice struct {
 	Index string
 }
 
+// MappedField is a field of a new struct type created from an old struct type.
 type MappedField struct {
+	// SourcePath the sequence of choices from the old root struct to the
+	//   old Field this MappedField corresponds to.
 	SourcePath []Choice
-	Name       string
+	// Name (of the Field) should correspond to the last item in SourcePath.
+	Name string
 
-	// Struct is non-nil if the field contains a struct.
+	// Struct is non-nil iff the field contains a struct.
 	Struct *MappedStruct
 
-	// Atomic if not a Struct.
-	Atom *MappedAtom
-}
-
-type MappedStruct struct {
-	SourcePath []Choice
-	Fields     []*MappedField
+	// Atom is non-nil iff the field doesn't contain a struct.
+	Atom MappedAtom
 }
 
 // MappedAtom is opaque to the shrinking algorithm.
 // The atom may be shrinkable on the inside, but fields cannot be pulled from it.
-type MappedAtom struct {
+// nil is the Identity mapping (no-op).
+type MappedAtom interface {
+	getMappedAtom() MappedAtom
+}
+
+// MappedStruct a new struct type created from an old struct type.
+// MappedStructs can be restructured using the shrinking algorithm.
+type MappedStruct struct {
+	// SourcePath the sequence of choices from the old root struct to the
+	//   old Struct this MappedStruct corresponds to
+	SourcePath []Choice
+	Fields     []*MappedField
+}
+
+// MappedSlice create a new Slice type by mapping elements of an old Slice type.
+type MappedSlice struct {
+	Elem *MappedAtom
+}
+
+// MappedMap create a new Map type by mapping values of an old Map type.
+type MappedMap struct {
+	Value *MappedAtom
 }
 
 func incrementFieldCount(fieldCounts map[string]int, fieldName string) {
@@ -60,9 +81,15 @@ func getFieldCount(fieldCounts map[string]int, fieldName string) int {
 	return 0
 }
 
+// Shrink move struct fields as close to the root struct as possible without
+//   creating field-name collisions.
+// TODO: When promoting from structs with only one field,
+//   use the parent field name instead of the field name for the promoted field.
 func (s *MappedStruct) Shrink() {
 	for {
 		promotionCount := 0
+
+		// Count the occurrences of each field and subfield name.
 		fieldCounts := map[string]int{}
 		for _, field := range s.Fields {
 			incrementFieldCount(fieldCounts, field.Name)
@@ -76,6 +103,7 @@ func (s *MappedStruct) Shrink() {
 			}
 		}
 
+		// Promote the subfields with unique names.
 		for fieldIx, field := range s.Fields {
 			if field.Atom != nil {
 				continue
@@ -95,7 +123,7 @@ func (s *MappedStruct) Shrink() {
 	}
 
 	// Finished shrinking the top level. Shrink the next level down.
-	for fieldIx, field := range s.Fields {
+	for _, field := range s.Fields {
 		if field.Atom != nil {
 			continue
 		}
@@ -104,6 +132,8 @@ func (s *MappedStruct) Shrink() {
 	}
 }
 
+// PromoteSubfield move a Field from its struct to the parent of its struct.
+//   If its original struct is now empty, delete this struct from its parent.
 func (s *MappedStruct) PromoteSubfield(fieldIx int, subfieldIx int) {
 	field := s.Fields[fieldIx]
 	subfield := field.Struct.Fields[subfieldIx]
@@ -115,11 +145,13 @@ func (s *MappedStruct) PromoteSubfield(fieldIx int, subfieldIx int) {
 	}
 }
 
+// InsertFieldAt insert a new Field into the Struct at a given index.
 func (s *MappedStruct) InsertFieldAt(fieldIx int, field *MappedField) {
 	s.Fields = append(s.Fields[:fieldIx],
 		append([]*MappedField{field}, s.Fields[fieldIx:]...)...)
 }
 
+// DeleteFieldAt delete the Field at a given index.
 func (s *MappedStruct) DeleteFieldAt(fieldIx int) {
 	s.Fields = append(s.Fields[:fieldIx], s.Fields[fieldIx+1:]...)
 }
@@ -130,4 +162,16 @@ func (c *SumChoice) getChoice() Choice {
 
 func (c *StructChoice) getChoice() Choice {
 	return c
+}
+
+func (s *MappedStruct) getMappedAtom() MappedAtom {
+	return s
+}
+
+func (m *MappedSlice) getMappedAtom() MappedAtom {
+	return m
+}
+
+func (m *MappedMap) getMappedAtom() MappedAtom {
+	return m
 }

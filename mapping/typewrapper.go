@@ -8,7 +8,7 @@ import (
 	"github.com/kr/pretty"
 )
 
-// TypeWrapper wrapper for TypeIdents.
+// TypeWrapper simplified representation of (a subset of) Go types.
 type TypeWrapper interface {
 	getWrapper() TypeWrapper
 }
@@ -34,29 +34,35 @@ type Slice struct {
 	Value TypeWrapper
 }
 
+// Sum type, a.k.a. Enum or Tagged Union.
 // TODO: Pointer is actually a subset of Sum (not implemented).
 // We can implement Sum types using interfaces.
 type Sum struct {
 	Choices []TypeWrapper
 }
 
+// PointerOf construct a Sum type for a pointer to a type "t".
 func PointerOf(t TypeWrapper) *Sum {
 	return &Sum{[]TypeWrapper{nil, t}}
 }
 
+// TypeDefinition defines the contents of a type.
 type TypeDefinition interface {
 	getTypeDefinition() TypeDefinition
 }
 
+// WrapperDefinition for wrapper types (e.g. type MyInt int).
 type WrapperDefinition struct {
 	Value TypeWrapper
 }
 
+// Field in a StructDefinition. Name is "" for anonymous fields.
 type Field struct {
 	Name string
 	Type TypeWrapper
 }
 
+// StructDefinition the fields in a struct.
 type StructDefinition struct {
 	Fields []Field
 }
@@ -107,13 +113,15 @@ func ParseTypeExpr(context *inspect.Context, typeExpr ast.Expr) TypeWrapper {
 	return nil
 }
 
-// DeepParseType is like ParseTypeExpr except it fills in TypeIdent.Definition
+// DeepParseType fully parses the focused TypeSpec in context as a TypeWrapper.
 func DeepParseType(context *inspect.Context) TypeWrapper {
 	return &TypeIdent{PkgPath: context.PackagePath(),
 		Name:       context.TypeSpec.Name.Name,
 		Definition: ParseTypeDefinition(context)}
 }
 
+// DeepParseTypeExpr is like ParseTypeExpr except it fills in
+//   TypeIdent.Definition.
 func DeepParseTypeExpr(context *inspect.Context, typeExpr ast.Expr) TypeWrapper {
 	switch typeExpr := typeExpr.(type) {
 	// Ident and Selector are base cases because this is about names.
@@ -142,7 +150,7 @@ func DeepParseTypeExpr(context *inspect.Context, typeExpr ast.Expr) TypeWrapper 
 	case *ast.ParenExpr:
 		return DeepParseTypeExpr(context, typeExpr.X)
 	case *ast.StarExpr:
-		return &Pointer{Value: DeepParseTypeExpr(context, typeExpr.X)}
+		return PointerOf(DeepParseTypeExpr(context, typeExpr.X))
 	case *ast.ArrayType:
 		if typeExpr.Len == nil {
 			return &Slice{Value: DeepParseTypeExpr(
@@ -161,6 +169,7 @@ func DeepParseTypeExpr(context *inspect.Context, typeExpr ast.Expr) TypeWrapper 
 	return nil
 }
 
+// ParseTypeDefinition parses the TypeSpec at the context's focus.
 func ParseTypeDefinition(context *inspect.Context) TypeDefinition {
 	switch typeExpr := context.TypeSpec.Type.(type) {
 	case *ast.StructType:
