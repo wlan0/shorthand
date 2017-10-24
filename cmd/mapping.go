@@ -1,13 +1,9 @@
 package cmd
 
-// This file contains methods for recursively inspecting a type definition
-//   and a Print() method to test their implementation.
-
 import (
 	"github.com/golang/glog"
 	"github.com/koki/shorthand/inspect"
 	"github.com/koki/shorthand/mapping"
-	"github.com/kr/pretty"
 	"golang.org/x/tools/go/loader"
 
 	// We're importing "v1" so it and its dependencies are added to vendor/.
@@ -19,7 +15,7 @@ import (
 )
 
 // load a package and traverse all its types.
-func loadAndPrint(typeName string) {
+func loadAndMap(typeName string) {
 	var conf loader.Config
 
 	// We're just loading "v1" (and then all its dependencies).
@@ -58,7 +54,10 @@ func loadAndPrint(typeName string) {
 
 	// Test the traversal context by printing all fields "recursively".
 	for _, context := range contexts {
-		pretty.Println(mapping.DeepParseType(context))
+		t := mapping.DeepParseType(context)
+		mapping := t.IdentityMapping([]mapping.Choice{})
+		mapping.Shrink()
+		mapping.Print(0)
 		//context.Print(0)
 	}
 }
