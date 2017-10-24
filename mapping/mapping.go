@@ -44,6 +44,7 @@ type MappedField struct {
 type MappedAtom interface {
 	getMappedAtom() MappedAtom
 	Shrink()
+	Print(int)
 }
 
 // MappedStruct a new struct type created from an old struct type.
@@ -88,12 +89,16 @@ func getFieldCount(fieldCounts map[string]int, fieldName string) int {
 
 // Shrink the mapping for values.
 func (m *MappedMap) Shrink() {
-	m.Value.Shrink()
+	if m.Value != nil {
+		m.Value.Shrink()
+	}
 }
 
 // Shrink the mapping for elements.
 func (m *MappedSlice) Shrink() {
-	m.Elem.Shrink()
+	if m.Elem != nil {
+		m.Elem.Shrink()
+	}
 }
 
 // Shrink move struct fields as close to the root struct as possible without
@@ -117,14 +122,23 @@ func (s *MappedStruct) Shrink() {
 		}
 
 		// Promote the subfields with unique names.
-		for fieldIx, field := range s.Fields {
+		for fieldIx := 0; fieldIx < len(s.Fields); {
+			deletedField := false
+			field := s.Fields[fieldIx]
 			if substruct, ok := field.Atom.(*MappedStruct); ok {
-				for subfieldIx, subfield := range substruct.Fields {
+				for subfieldIx := 0; subfieldIx < len(substruct.Fields); {
+					subfield := substruct.Fields[subfieldIx]
 					if getFieldCount(fieldCounts, subfield.Name) == 1 {
 						promotionCount++
-						s.PromoteSubfield(fieldIx, substruct, subfieldIx)
+						deletedField = deletedField || s.PromoteSubfield(fieldIx, substruct, subfieldIx)
+					} else {
+						subfieldIx++
 					}
 				}
+			}
+
+			if !deletedField {
+				fieldIx++
 			}
 		}
 
@@ -135,20 +149,25 @@ func (s *MappedStruct) Shrink() {
 
 	// Finished shrinking the top level. Shrink the next level down.
 	for _, field := range s.Fields {
-		field.Atom.Shrink()
+		if field.Atom != nil {
+			field.Atom.Shrink()
+		}
 	}
 }
 
 // PromoteSubfield move a Field from its struct to the parent of its struct.
 //   If its original struct is now empty, delete this struct from its parent.
-func (s *MappedStruct) PromoteSubfield(fieldIx int, substruct *MappedStruct, subfieldIx int) {
+func (s *MappedStruct) PromoteSubfield(fieldIx int, substruct *MappedStruct, subfieldIx int) (deletedField bool) {
 	subfield := substruct.Fields[subfieldIx]
 	substruct.DeleteFieldAt(subfieldIx)
 	s.InsertFieldAt(fieldIx, subfield)
 
 	if len(substruct.Fields) == 0 {
 		s.DeleteFieldAt(fieldIx)
+		deletedField = true
 	}
+
+	return
 }
 
 // InsertFieldAt insert a new Field into the Struct at a given index.

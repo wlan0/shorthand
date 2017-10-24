@@ -4,7 +4,6 @@ import (
 	"github.com/golang/glog"
 	"github.com/koki/shorthand/inspect"
 	"github.com/koki/shorthand/mapping"
-	"github.com/kr/pretty"
 	"golang.org/x/tools/go/loader"
 
 	// We're importing "v1" so it and its dependencies are added to vendor/.
@@ -56,7 +55,9 @@ func loadAndMap(typeName string) {
 	// Test the traversal context by printing all fields "recursively".
 	for _, context := range contexts {
 		t := mapping.DeepParseType(context)
-		pretty.Println(t.IdentityMapping([]mapping.Choice{}))
+		mapping := t.IdentityMapping([]mapping.Choice{})
+		mapping.Shrink()
+		mapping.Print(0)
 		//context.Print(0)
 	}
 }
