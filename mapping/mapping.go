@@ -35,10 +35,6 @@ type MappedField struct {
 	// Name (of the Field) should correspond to the last item in SourcePath.
 	Name string
 
-	// Struct is non-nil iff the field contains a struct.
-	Struct *MappedStruct
-
-	// Atom is non-nil iff the field doesn't contain a struct.
 	Atom MappedAtom
 }
 
@@ -47,6 +43,7 @@ type MappedField struct {
 // nil is the Identity mapping (no-op).
 type MappedAtom interface {
 	getMappedAtom() MappedAtom
+	Shrink()
 }
 
 // MappedStruct a new struct type created from an old struct type.
@@ -60,12 +57,20 @@ type MappedStruct struct {
 
 // MappedSlice create a new Slice type by mapping elements of an old Slice type.
 type MappedSlice struct {
-	Elem *MappedAtom
+	Elem MappedAtom
 }
 
 // MappedMap create a new Map type by mapping values of an old Map type.
 type MappedMap struct {
-	Value *MappedAtom
+	Value MappedAtom
+}
+
+// AppendedChoice get a copy of "prefix" with the next choice appended to it.
+func AppendedChoice(prefix []Choice, choice Choice) []Choice {
+	newPrefix := make([]Choice, len(prefix))
+	copy(newPrefix, prefix)
+
+	return append(newPrefix, choice)
 }
 
 func incrementFieldCount(fieldCounts map[string]int, fieldName string) {
@@ -81,6 +86,16 @@ func getFieldCount(fieldCounts map[string]int, fieldName string) int {
 	return 0
 }
 
+// Shrink the mapping for values.
+func (m *MappedMap) Shrink() {
+	m.Value.Shrink()
+}
+
+// Shrink the mapping for elements.
+func (m *MappedSlice) Shrink() {
+	m.Elem.Shrink()
+}
+
 // Shrink move struct fields as close to the root struct as possible without
 //   creating field-name collisions.
 // TODO: When promoting from structs with only one field,
@@ -93,26 +108,22 @@ func (s *MappedStruct) Shrink() {
 		fieldCounts := map[string]int{}
 		for _, field := range s.Fields {
 			incrementFieldCount(fieldCounts, field.Name)
-
-			if field.Atom != nil {
-				continue
-			}
-
-			for _, subfield := range field.Struct.Fields {
-				incrementFieldCount(fieldCounts, subfield.Name)
+			if substruct, ok := field.Atom.(*MappedStruct); ok {
+				for _, subfield := range substruct.Fields {
+					incrementFieldCount(
+						fieldCounts, subfield.Name)
+				}
 			}
 		}
 
 		// Promote the subfields with unique names.
 		for fieldIx, field := range s.Fields {
-			if field.Atom != nil {
-				continue
-			}
-
-			for subfieldIx, subfield := range field.Struct.Fields {
-				if getFieldCount(fieldCounts, subfield.Name) == 1 {
-					promotionCount++
-					s.PromoteSubfield(fieldIx, subfieldIx)
+			if substruct, ok := field.Atom.(*MappedStruct); ok {
+				for subfieldIx, subfield := range substruct.Fields {
+					if getFieldCount(fieldCounts, subfield.Name) == 1 {
+						promotionCount++
+						s.PromoteSubfield(fieldIx, substruct, subfieldIx)
+					}
 				}
 			}
 		}
@@ -124,23 +135,18 @@ func (s *MappedStruct) Shrink() {
 
 	// Finished shrinking the top level. Shrink the next level down.
 	for _, field := range s.Fields {
-		if field.Atom != nil {
-			continue
-		}
-
-		field.Struct.Shrink()
+		field.Atom.Shrink()
 	}
 }
 
 // PromoteSubfield move a Field from its struct to the parent of its struct.
 //   If its original struct is now empty, delete this struct from its parent.
-func (s *MappedStruct) PromoteSubfield(fieldIx int, subfieldIx int) {
-	field := s.Fields[fieldIx]
-	subfield := field.Struct.Fields[subfieldIx]
-	field.Struct.DeleteFieldAt(subfieldIx)
+func (s *MappedStruct) PromoteSubfield(fieldIx int, substruct *MappedStruct, subfieldIx int) {
+	subfield := substruct.Fields[subfieldIx]
+	substruct.DeleteFieldAt(subfieldIx)
 	s.InsertFieldAt(fieldIx, subfield)
 
-	if len(field.Struct.Fields) == 0 {
+	if len(substruct.Fields) == 0 {
 		s.DeleteFieldAt(fieldIx)
 	}
 }

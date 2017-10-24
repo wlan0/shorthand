@@ -23,6 +23,19 @@ var printCmd = &cobra.Command{
 	},
 }
 
+var shrinkCmd = &cobra.Command{
+	Use:   "shrink [optional: v1 type name, e.g. Pod]",
+	Short: "shrink a k8s v1 type",
+	Args:  cobra.MaximumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		if len(args) > 0 {
+			loadAndMap(args[0])
+		} else {
+			loadAndMap("")
+		}
+	},
+}
+
 var playCmd = &cobra.Command{
 	Use:   "play",
 	Short: "do some random stuff (development purposes only)",
@@ -32,5 +45,5 @@ var playCmd = &cobra.Command{
 }
 
 func init() {
-	RootCmd.AddCommand(printCmd, playCmd)
+	RootCmd.AddCommand(printCmd, playCmd, shrinkCmd)
 }

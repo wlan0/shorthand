@@ -11,6 +11,7 @@ import (
 // TypeWrapper simplified representation of (a subset of) Go types.
 type TypeWrapper interface {
 	getWrapper() TypeWrapper
+	IdentityMapping(prefix []Choice) MappedAtom
 }
 
 // TypeIdent is a fully qualified type identifier.
@@ -107,7 +108,7 @@ func ParseTypeExpr(context *inspect.Context, typeExpr ast.Expr) TypeWrapper {
 			Value: ParseTypeExpr(context, typeExpr.Value)}
 	}
 
-	glog.Fatal(pretty.Printf(
+	glog.Fatal(pretty.Sprintf(
 		"unsupported type expr (%# v)",
 		typeExpr))
 	return nil
@@ -163,7 +164,7 @@ func DeepParseTypeExpr(context *inspect.Context, typeExpr ast.Expr) TypeWrapper 
 			Value: DeepParseTypeExpr(context, typeExpr.Value)}
 	}
 
-	glog.Fatal(pretty.Printf(
+	glog.Fatal(pretty.Sprintf(
 		"unsupported type expr (%# v)",
 		typeExpr))
 	return nil
@@ -176,14 +177,20 @@ func ParseTypeDefinition(context *inspect.Context) TypeDefinition {
 		fields := []Field{}
 		for _, field := range typeExpr.Fields.List {
 			fieldType := DeepParseTypeExpr(context, field.Type)
-			for _, fieldIdent := range field.Names {
-				var fieldName string
-				if fieldIdent != nil {
-					fieldName = fieldIdent.Name
-				}
-
+			if field.Names == nil {
+				// Anonymous field.
 				fields = append(fields, Field{
-					Name: fieldName, Type: fieldType})
+					Name: "", Type: fieldType})
+			} else {
+				for _, fieldIdent := range field.Names {
+					var fieldName string
+					if fieldIdent != nil {
+						fieldName = fieldIdent.Name
+					}
+
+					fields = append(fields, Field{
+						Name: fieldName, Type: fieldType})
+				}
 			}
 		}
 
@@ -191,6 +198,52 @@ func ParseTypeDefinition(context *inspect.Context) TypeDefinition {
 	default:
 		return &WrapperDefinition{Value: ParseTypeExpr(context, typeExpr)}
 	}
+}
+
+// IdentityMapping identity.
+func (t *TypeIdent) IdentityMapping(prefix []Choice) MappedAtom {
+	switch d := t.Definition.(type) {
+	case *StructDefinition:
+		fields := make([]*MappedField, len(d.Fields))
+		for ix, field := range d.Fields {
+			newPrefix := AppendedChoice(prefix, &StructChoice{field.Name})
+			fields[ix] = &MappedField{
+				SourcePath: newPrefix,
+				Name:       field.Name,
+				Atom:       field.Type.IdentityMapping(newPrefix),
+			}
+		}
+		return &MappedStruct{
+			SourcePath: prefix,
+			Fields:     fields,
+		}
+	case *WrapperDefinition:
+		// Don't bother transforming wrapper types.
+		return nil
+	}
+
+	// Don't bother transforming built-in types either.
+	return nil
+}
+
+// IdentityMapping identity.
+func (t *Map) IdentityMapping(prefix []Choice) MappedAtom {
+	return &MappedMap{t.Value.IdentityMapping(prefix)}
+}
+
+// IdentityMapping identity.
+func (t *Slice) IdentityMapping(prefix []Choice) MappedAtom {
+	return &MappedSlice{t.Value.IdentityMapping(prefix)}
+}
+
+// IdentityMapping identity.
+func (t *Sum) IdentityMapping(prefix []Choice) MappedAtom {
+	if len(t.Choices) != 2 {
+		glog.Fatal("Only Pointer is supported as a Sum type.")
+	}
+
+	newPrefix := AppendedChoice(prefix, &SumChoice{1})
+	return t.Choices[1].IdentityMapping(newPrefix)
 }
 
 func (d *WrapperDefinition) getTypeDefinition() TypeDefinition {
